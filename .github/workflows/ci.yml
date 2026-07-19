@@ -1,0 +1,102 @@
+# .github/workflows/ci.yml
+# Phase 0, Step 6 — CI/CD Pipeline
+#
+# Branch strategy (documented in full in CONTRIBUTING.md):
+#   main        -> production history (tags only, no direct pushes)
+#   development -> integration branch, default PR target
+#   release      -> auto-deploys to STAGING on merge
+#   hotfix/*     -> emergency fixes, branched from main
+#   feature/*    -> all new work, branched from development
+#
+# On every push to a feature/* branch (or PR into development): typecheck,
+# lint, and tests run. On merge to `release`: auto-deploy to the staging
+# Firebase project. Production deploy is a separate, manually-approved
+# workflow — never triggered automatically from this file.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - "hotfix/**"
+      - "release"
+  pull_request:
+    branches:
+      - "development"
+      - "release"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test --if-present
+
+      - name: Build
+        run: npm run build
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: verify
+    if: github.ref == 'refs/heads/release' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (staging env)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.STAGING_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.STAGING_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.STAGING_FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.STAGING_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.STAGING_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.STAGING_FIREBASE_APP_ID }}
+
+      - name: Deploy to Firebase Hosting (staging project)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}"
+          projectId: resora-staging
+          channelId: live
+
+  # Production deploy is intentionally a SEPARATE workflow
+  # (.github/workflows/deploy-production.yml, later phase) gated behind a
+  # `production` GitHub Environment with required manual reviewers — this
+  # file must never gain a job that deploys to the production project.
