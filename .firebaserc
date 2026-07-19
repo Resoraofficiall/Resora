@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "development": "resora-dev",
+    "staging": "resora-staging",
+    "production": "resora-bd7c5"
+  },
+  "targets": {},
+  "etags": {}
+}
