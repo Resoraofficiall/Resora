@@ -1,0 +1,456 @@
+rules_version = '2';
+
+// =====================================================================
+// RESORA — Firestore Security Rules
+// Per Blueprint §6.5 (Security Rule Principles) and §16 (Security Architecture)
+// Layered defense: authenticated → role → ownership → field-level allow-list
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function role() {
+      return isSignedIn() ? request.auth.token.role : null;
+    }
+
+    function studioIdClaim() {
+      return isSignedIn() ? request.auth.token.studioId : null;
+    }
+
+    function isFounder() {
+      return isSignedIn() && role() == 'founder';
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && role() == 'superAdmin';
+    }
+
+    function isAdmin() {
+      // Founder/superAdmin only — being logged in is never sufficient (§16.2)
+      return isFounder() || isSuperAdmin();
+    }
+
+    function isSupport() {
+      return isSignedIn() && role() == 'support';
+    }
+
+    function isFinanceManager() {
+      return isSignedIn() && role() == 'financeManager';
+    }
+
+    function isContentManager() {
+      return isSignedIn() && role() == 'contentManager';
+    }
+
+    function isMarketingManager() {
+      return isSignedIn() && role() == 'marketingManager';
+    }
+
+    function isSeller() {
+      return isSignedIn() && role() == 'seller';
+    }
+
+    function isCustomer() {
+      return isSignedIn() && role() == 'customer';
+    }
+
+    function isActiveUser() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(uid())).data.status == 'active';
+    }
+
+    function ownsStudio(studioId) {
+      return isSeller() && studioIdClaim() == studioId;
+    }
+
+    // Field-level allow-list check: incoming write's changed keys are a
+    // subset of allowedFields.
+    function onlyChangedFields(allowedFields) {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(allowedFields);
+    }
+
+    // -------------------------------------------------------------
+    // users/{uid}
+    // -------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isSignedIn() && (uid() == userId || isAdmin() || isSupport());
+
+      // Creation happens via Cloud Function trigger on Auth signup in practice,
+      // but allow a client-initiated create of the caller's own doc as a
+      // fallback path, with role locked to visitor/customer only.
+      allow create: if isSignedIn() && uid() == userId &&
+        request.resource.data.role in ['visitor', 'customer'] &&
+        request.resource.data.status == 'active';
+
+      // Self-editable fields only. Role, status, wishlistCount, orderCount,
+      // loyaltyPoints are never client-writable.
+      allow update: if isSignedIn() && (
+        (uid() == userId &&
+          onlyChangedFields(['fullName', 'profilePhoto', 'preferredLanguage',
+            'phone', 'updatedAt', 'lastLoginAt'])) ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // studios/{studioId}
+    // Provisioned only by Cloud Function (§3.3) — client cannot create.
+    // -------------------------------------------------------------
+    match /studios/{studioId} {
+      allow read: if true; // public storefronts
+
+      allow create: if false; // Cloud Function (onSellerApproved) only, via Admin SDK
+
+      allow update: if isSignedIn() && (
+        (ownsStudio(studioId) &&
+          onlyChangedFields(['name', 'description', 'logoUrl', 'bannerUrl',
+            'galleryUrls', 'policies', 'seo', 'updatedAt'])) ||
+        isAdmin()
+      );
+      // Sellers may never touch: slug, followerCount, rating, reviewCount,
+      // totalOrders, revenueTotal, subscriptionTier, verificationBadge,
+      // featured, active — those are Founder/system-controlled fields.
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // products/{productId}
+    // -------------------------------------------------------------
+    match /products/{productId} {
+      allow read: if resource.data.status == 'published' ||
+        (isSignedIn() && (
+          ownsStudio(resource.data.studioId) ||
+          isAdmin() ||
+          isContentManager()
+        ));
+
+      allow create: if isSignedIn() && ownsStudio(request.resource.data.studioId) &&
+        request.resource.data.status in ['draft', 'pendingReview'];
+
+      allow update: if isSignedIn() && (
+        (ownsStudio(resource.data.studioId) &&
+          // Sellers cannot self-approve or fabricate counters
+          onlyChangedFields(['name', 'slug', 'shortDescription', 'description',
+            'story', 'category', 'collectionIds', 'price', 'salePrice', 'sku',
+            'inventoryCount', 'inventoryMode', 'images', 'videos', 'variants',
+            'materials', 'dimensions', 'weight', 'productionTimeDays',
+            'shippingTimeDays', 'status', 'seo', 'updatedAt']) &&
+          // A seller may only move status into draft/pendingReview/hidden/archived,
+          // never directly to approved/published (requires moderation, §3.2)
+          request.resource.data.status in
+            ['draft', 'pendingReview', 'hidden', 'archived']) ||
+        isAdmin() ||
+        isContentManager()
+      );
+
+      allow delete: if isAdmin() || ownsStudio(resource.data.studioId);
+    }
+
+    // -------------------------------------------------------------
+    // categories/{categoryId}, collections/{collectionId}
+    // CMS-style reference data — Founder/Content Manager managed.
+    // -------------------------------------------------------------
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin() || isContentManager();
+    }
+
+    match /collections/{collectionId} {
+      allow read: if true;
+      allow write: if isAdmin() || isContentManager();
+    }
+
+    // -------------------------------------------------------------
+    // orders/{orderId}
+    // Never directly client-written — creation/updates are Cloud Function
+    // only (payment webhook, fulfillment actions) to prevent price
+    // tampering and status forgery (§6.5, §7.1).
+    // -------------------------------------------------------------
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (
+        resource.data.customerId == uid() ||
+        ownsStudio(resource.data.studioId) ||
+        isAdmin() || isSupport() || isFinanceManager()
+      );
+
+      allow create: if false; // Cloud Function only (paymentWebhook.ts)
+      allow update: if false; // Cloud Function only (updateOrderStatus.ts)
+      allow delete: if false; // orders are never deleted, only cancelled via status
+    }
+
+    // -------------------------------------------------------------
+    // customOrders/{requestId}
+    // -------------------------------------------------------------
+    match /customOrders/{requestId} {
+      allow read: if isSignedIn() && (
+        resource.data.customerId == uid() ||
+        ownsStudio(resource.data.assignedStudioId) ||
+        isAdmin() || isSupport()
+      );
+
+      allow create: if isSignedIn() && isCustomer() &&
+        request.resource.data.customerId == uid() &&
+        request.resource.data.status == 'submitted';
+
+      // Status transitions and quote/price fields are validated server-side
+      // in practice; rules here restrict *who* can touch the doc and which
+      // fields, not the full state machine (owned by Cloud Functions).
+      allow update: if isSignedIn() && (
+        (resource.data.customerId == uid() &&
+          onlyChangedFields(['status', 'updatedAt']) &&
+          request.resource.data.status in ['accepted', 'cancelled']) ||
+        (ownsStudio(resource.data.assignedStudioId) &&
+          onlyChangedFields(['status', 'quotedPrice', 'updatedAt'])) ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // reviews/{reviewId}
+    // -------------------------------------------------------------
+    match /reviews/{reviewId} {
+      allow read: if resource.data.moderationStatus == 'visible' || isAdmin() || isSupport();
+
+      allow create: if isSignedIn() && isCustomer() &&
+        request.resource.data.customerId == uid() &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        request.resource.data.moderationStatus == 'visible';
+
+      allow update: if isSignedIn() && (
+        (resource.data.customerId == uid() &&
+          request.time < resource.data.editableUntil &&
+          onlyChangedFields(['title', 'body', 'imageUrls', 'rating'])) ||
+        // Support can only flag, never edit content or unhide directly
+        (isSupport() && onlyChangedFields(['moderationStatus']) &&
+          request.resource.data.moderationStatus == 'flagged') ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // followers/{followId}  — customer → studio follow relationship
+    // -------------------------------------------------------------
+    match /followers/{followId} {
+      allow read: if isSignedIn() &&
+        (resource.data.customerId == uid() || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.customerId == uid();
+      allow delete: if isSignedIn() &&
+        (resource.data.customerId == uid() || isAdmin());
+      allow update: if false; // unfollow = delete, not update
+    }
+
+    // -------------------------------------------------------------
+    // wishlists/{wishlistId}
+    // -------------------------------------------------------------
+    match /wishlists/{wishlistId} {
+      allow read, write: if isSignedIn() && request.auth.uid ==
+        (resource != null ? resource.data.customerId : request.resource.data.customerId);
+    }
+
+    // -------------------------------------------------------------
+    // carts/{cartId}  — cartId == uid by convention (one active cart per user)
+    // -------------------------------------------------------------
+    match /carts/{cartId} {
+      allow read, write: if isSignedIn() && uid() == cartId;
+    }
+
+    // -------------------------------------------------------------
+    // notifications/{notificationId}
+    // -------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.recipientUid == uid();
+      allow update: if isSignedIn() && resource.data.recipientUid == uid() &&
+        onlyChangedFields(['read', 'readAt']);
+      allow create, delete: if false; // Cloud Functions only
+    }
+
+    // -------------------------------------------------------------
+    // messages/{messageId}  — customer <-> seller custom-order threads
+    // -------------------------------------------------------------
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (
+        uid() in resource.data.participantUids || isAdmin() || isSupport()
+      );
+      allow create: if isSignedIn() && uid() in request.resource.data.participantUids;
+      allow update: if false; // messages are immutable once sent
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // supportTickets/{ticketId}
+    // -------------------------------------------------------------
+    match /supportTickets/{ticketId} {
+      allow read: if isSignedIn() && (
+        resource.data.customerId == uid() || isSupport() || isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.customerId == uid();
+      allow update: if isSignedIn() && (
+        (resource.data.customerId == uid() && onlyChangedFields(['updatedAt', 'messages'])) ||
+        isSupport() || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // payments/{paymentId}
+    // gatewayResponseRaw is internal-only — never client-readable.
+    // Entire collection is Cloud Function–managed (§6.2, §7.1).
+    // -------------------------------------------------------------
+    match /payments/{paymentId} {
+      allow read: if isFinanceManager() || isAdmin();
+      allow write: if false; // initiatePayment.ts / paymentWebhook.ts only
+    }
+
+    // -------------------------------------------------------------
+    // payouts/{payoutId}
+    // -------------------------------------------------------------
+    match /payouts/{payoutId} {
+      allow read: if isSignedIn() && (
+        ownsStudio(resource.data.studioId) || isFinanceManager() || isAdmin()
+      );
+      allow write: if isFinanceManager() || isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // coupons/{couponId}, campaigns/{campaignId}
+    // -------------------------------------------------------------
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin() || isMarketingManager();
+    }
+
+    match /campaigns/{campaignId} {
+      allow read: if true;
+      allow write: if isAdmin() || isMarketingManager();
+    }
+
+    // -------------------------------------------------------------
+    // journal/{articleId}  — editorial content
+    // -------------------------------------------------------------
+    match /journal/{articleId} {
+      allow read: if resource.data.status == 'published' || isAdmin() || isContentManager();
+      allow write: if isAdmin() || isContentManager();
+    }
+
+    // -------------------------------------------------------------
+    // media/{mediaId}  — Storage metadata references
+    // -------------------------------------------------------------
+    match /media/{mediaId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.ownerUid == uid();
+      allow update, delete: if isSignedIn() &&
+        (resource.data.ownerUid == uid() || isAdmin());
+    }
+
+    // -------------------------------------------------------------
+    // analytics/{studioId}  — summary docs, system-written only
+    // -------------------------------------------------------------
+    match /analytics/{studioId} {
+      allow read: if ownsStudio(studioId) || isAdmin() || isFinanceManager();
+      allow write: if false; // Cloud Functions only
+    }
+
+    // -------------------------------------------------------------
+    // cms/{docId}  — homepage, navigation, footer, theme, announcementBar
+    // -------------------------------------------------------------
+    match /cms/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isContentManager();
+    }
+
+    // -------------------------------------------------------------
+    // settings/{docId}  — includes settings/canvasEngineFrames (Phase 3.5)
+    // -------------------------------------------------------------
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // automationRules/{ruleId}
+    // -------------------------------------------------------------
+    match /automationRules/{ruleId} {
+      allow read: if isAdmin() || isMarketingManager();
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // auditLogs/{logId}  — append-only, no update/delete (§6.5)
+    // -------------------------------------------------------------
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn(); // written by Cloud Functions / server actions
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------
+    // corporateLeads/{leadId}
+    // -------------------------------------------------------------
+    match /corporateLeads/{leadId} {
+      allow read: if isAdmin() || isSupport();
+      allow create: if true; // public inquiry form, unauthenticated allowed
+      allow update: if isAdmin() || isSupport();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // seo/{docId}
+    // -------------------------------------------------------------
+    match /seo/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isContentManager();
+    }
+
+    // -------------------------------------------------------------
+    // Reserved-but-inactive-in-V1 collections (§6.1): schema reserved,
+    // no client access surface until the feature ships.
+    // -------------------------------------------------------------
+    match /affiliates/{docId} {
+      allow read, write: if false;
+    }
+    match /giftCards/{docId} {
+      allow read, write: if false;
+    }
+    match /loyaltyLedger/{docId} {
+      allow read, write: if false;
+    }
+    match /subscriptionsBilling/{docId} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------
+    // Counters (order ID generation, §6.2) — transaction-only, no direct
+    // client read/write of the raw counter value.
+    // -------------------------------------------------------------
+    match /counters/{counterId} {
+      allow read, write: if false; // Cloud Function transactions only
+    }
+
+    // -------------------------------------------------------------
+    // Default deny for anything not explicitly matched above.
+    // -------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
