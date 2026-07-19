@@ -1,0 +1,161 @@
+rules_version = '2';
+
+// =====================================================================
+// RESORA — Firebase Storage Security Rules
+// Per Blueprint §6.3 (Storage Folder Structure) and §16 (Security)
+// Firestore stores metadata + URL only; every upload path includes an
+// owning ID so rules validate ownership via a single pattern match,
+// never a Firestore lookup (§6.3).
+// =====================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function role() {
+      return isSignedIn() ? request.auth.token.role : null;
+    }
+
+    function studioIdClaim() {
+      return isSignedIn() ? request.auth.token.studioId : null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && role() in ['founder', 'superAdmin'];
+    }
+
+    function isContentManager() {
+      return isSignedIn() && role() == 'contentManager';
+    }
+
+    function ownsStudioPath(studioId) {
+      return isSignedIn() && role() == 'seller' && studioIdClaim() == studioId;
+    }
+
+    // Max upload sizes — enforced here, not just client-side.
+    function underImageLimit() {
+      return request.resource.size < 10 * 1024 * 1024; // 10MB
+    }
+
+    function underVideoLimit() {
+      return request.resource.size < 100 * 1024 * 1024; // 100MB
+    }
+
+    function isImageType() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isVideoType() {
+      return request.resource.contentType.matches('video/.*');
+    }
+
+    // -----------------------------------------------------------------
+    // /studios/{studioId}/logo|banner|gallery|products/{productId}/**
+    // -----------------------------------------------------------------
+    match /studios/{studioId}/logo/{fileName} {
+      allow read: if true;
+      allow write: if (ownsStudioPath(studioId) || isAdmin()) &&
+        isImageType() && underImageLimit();
+    }
+
+    match /studios/{studioId}/banner/{fileName} {
+      allow read: if true;
+      allow write: if (ownsStudioPath(studioId) || isAdmin()) &&
+        isImageType() && underImageLimit();
+    }
+
+    match /studios/{studioId}/gallery/{fileName} {
+      allow read: if true;
+      allow write: if (ownsStudioPath(studioId) || isAdmin()) &&
+        (isImageType() || isVideoType()) &&
+        (isImageType() ? underImageLimit() : underVideoLimit());
+    }
+
+    match /studios/{studioId}/products/{productId}/{fileName} {
+      allow read: if true;
+      allow write: if (ownsStudioPath(studioId) || isAdmin()) &&
+        (isImageType() || isVideoType()) &&
+        (isImageType() ? underImageLimit() : underVideoLimit());
+      allow delete: if ownsStudioPath(studioId) || isAdmin();
+    }
+
+    // -----------------------------------------------------------------
+    // /users/{uid}/profile/{fileName}
+    // -----------------------------------------------------------------
+    match /users/{userId}/profile/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && uid() == userId &&
+        isImageType() && underImageLimit();
+      allow delete: if isSignedIn() && (uid() == userId || isAdmin());
+    }
+
+    // -----------------------------------------------------------------
+    // /journal/{articleId}/{fileName}  — editorial assets
+    // -----------------------------------------------------------------
+    match /journal/{articleId}/{fileName} {
+      allow read: if true;
+      allow write: if (isAdmin() || isContentManager()) &&
+        isImageType() && underImageLimit();
+    }
+
+    // -----------------------------------------------------------------
+    // /campaigns/{campaignId}/{fileName}
+    // -----------------------------------------------------------------
+    match /campaigns/{campaignId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin() &&
+        (isImageType() || isVideoType()) &&
+        (isImageType() ? underImageLimit() : underVideoLimit());
+    }
+
+    // -----------------------------------------------------------------
+    // /support-tickets/{ticketId}/attachments/{fileName}
+    // Readable by ticket owner + support/admin only — not public, since
+    // attachments may contain personal info. Ownership is validated by a
+    // custom claim check is not possible here (no ticket doc lookup
+    // allowed per §6.3 "single pattern match" rule), so tickets embed the
+    // owning uid in the path segment itself.
+    // -----------------------------------------------------------------
+    match /support-tickets/{ticketId}/attachments/{ownerUid}/{fileName} {
+      allow read: if isSignedIn() &&
+        (uid() == ownerUid || role() in ['support', 'founder', 'superAdmin']);
+      allow write: if isSignedIn() && uid() == ownerUid &&
+        underImageLimit();
+    }
+
+    // -----------------------------------------------------------------
+    // /invoices/{orderId}/{fileName}  — immutable once issued (§7.6)
+    // -----------------------------------------------------------------
+    match /invoices/{orderId}/{fileName} {
+      allow read: if isSignedIn(); // further scoped by signed URL / Firestore order read in practice
+      allow write: if false; // Cloud Function only, generated once at payment confirmation
+      allow delete: if false;
+    }
+
+    // -----------------------------------------------------------------
+    // /temp/{uid}/{uploadSessionId}/{fileName}
+    // Purged by scheduled function after 24h (purgeTempStorage.ts, RSR-FBS-009)
+    // -----------------------------------------------------------------
+    match /temp/{userId}/{uploadSessionId}/{fileName} {
+      allow read: if isSignedIn() && uid() == userId;
+      allow write: if isSignedIn() && uid() == userId &&
+        (isImageType() || isVideoType()) &&
+        (isImageType() ? underImageLimit() : underVideoLimit());
+      allow delete: if isSignedIn() && uid() == userId;
+    }
+
+    // -----------------------------------------------------------------
+    // Default deny
+    // -----------------------------------------------------------------
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
