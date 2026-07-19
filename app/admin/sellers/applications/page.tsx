@@ -1,4 +1,4 @@
-/**
+        /**
  * app/admin/sellers/applications/page.tsx
  * RSR-APP-037
  *
@@ -194,3 +194,114 @@ export default function SellerApplicationsPage() {
 
         <div className="lg:col-span-2">
           {!selectedApp ? (
+            <div className="rounded-md bg-ivory-50 p-8 text-center shadow-card">
+              <p className="text-body text-gray-500">
+                Select an application to review.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-md bg-ivory-50 p-6 shadow-card">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-display text-h3 text-black-900">
+                  {selectedApp.studioNameProposed}
+                </h2>
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-caption text-gray-700">
+                  {statusLabel[selectedApp.status]}
+                </span>
+              </div>
+
+              <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-caption">
+                <div>
+                  <p className="text-gray-500">Applicant</p>
+                  <p className="text-black-900">{selectedApp.applicantName}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Category</p>
+                  <p className="text-black-900">{selectedApp.category}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Email</p>
+                  <p className="text-black-900">{selectedApp.email}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Phone</p>
+                  <p className="text-black-900">{selectedApp.phone}</p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <p className="mb-1 text-caption text-gray-500">Bio</p>
+                <p className="text-body text-gray-700">{selectedApp.bio}</p>
+              </div>
+
+              {selectedApp.portfolioUrls.length > 0 && (
+                <div className="mb-6">
+                  <p className="mb-2 text-caption text-gray-500">Portfolio</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {selectedApp.portfolioUrls.map((url, i) => (
+                      <div
+                        key={i}
+                        className="aspect-square overflow-hidden rounded-sm bg-gray-100"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={`Portfolio ${i + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-6">
+                <label className="mb-1 block text-caption text-gray-700">
+                  Note (required for Reject / Request Info / Hold)
+                </label>
+                <textarea
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-sm border border-gray-300 px-3 py-2 text-body focus:border-gold-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="primary"
+                  loading={decidingId === selectedApp.applicationId}
+                  onClick={() => handleDecision("approve")}
+                >
+                  Approve & Provision Studio
+                </Button>
+                <Button
+                  variant="outline"
+                  loading={decidingId === selectedApp.applicationId}
+                  onClick={() => handleDecision("requestInfo")}
+                >
+                  Request More Info
+                </Button>
+                <Button
+                  variant="ghost"
+                  loading={decidingId === selectedApp.applicationId}
+                  onClick={() => handleDecision("hold")}
+                >
+                  Hold
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={decidingId === selectedApp.applicationId}
+                  onClick={() => handleDecision("reject")}
+                  className="ml-auto"
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
