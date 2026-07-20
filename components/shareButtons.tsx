@@ -1,12 +1,12 @@
 /**
- * components/ShareButtons.tsx
- * RSR-CMP — Simple share row (copy link, WhatsApp, X). Default export
- * — studio/StudioHero.tsx imports it as `import ShareButtons from ...`.
+ * components/shareButtons.tsx
+ * Social sharing buttons component
  */
 
-"use client";
+'use client';
 
-import * as React from "react";
+import React from 'react';
+import { Share2 } from 'lucide-react';
 
 export interface ShareButtonsProps {
   url: string;
@@ -17,35 +17,39 @@ export default function ShareButtons({ url, title }: ShareButtonsProps) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
   };
 
   return (
-    <div className="flex items-center gap-[var(--space-2)]">
+    <div className="flex items-center gap-4">
       <button
-        type="button"
         onClick={handleCopy}
-        className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)]"
+        className="flex items-center gap-2 text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)] transition"
       >
-        {copied ? "Copied!" : "Copy Link"}
+        <Share2 size={16} />
+        {copied ? 'Copied!' : 'Share'}
       </button>
       <a
         href={`https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}`}
         target="_blank"
-        rel="noreferrer noopener"
-        className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)]"
+        rel="noreferrer"
+        className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)] transition"
       >
         WhatsApp
       </a>
       <a
         href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`}
         target="_blank"
-        rel="noreferrer noopener"
-        className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)]"
+        rel="noreferrer"
+        className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)] transition"
       >
-        Share on X
+        X
       </a>
     </div>
   );

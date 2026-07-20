@@ -1,66 +1,60 @@
 /**
  * services/cartService.ts
- * RSR-SVC-006 — Cart line-item management. Cart is stored per-session
- * under carts/{uid}/items — anonymous carts (no uid) fall back to a
- * device-local cart id stored in-memory by the caller; this service
- * assumes an already-resolved owner key is provided by useAuth.
+ * Shopping cart service - localStorage based for v1
  */
 
-import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
-import { db, auth } from "@/lib/firebaseClient";
+import type { CartItem } from '@/types/schema';
 
-export interface CartItem {
-  id: string;
-  productId: string;
-  title: string;
-  imageUrl: string | null;
-  priceInPaise: number;
-  currency: string;
-  quantity: number;
+const CART_STORAGE_KEY = 'resora-cart';
+
+export interface Cart {
+  items: CartItem[];
 }
 
-function requireUid(): string {
-  const uid = auth.currentUser?.uid;
-  if (!uid) throw new Error("[cartService] No signed-in user for cart operation.");
-  return uid;
+function getCart(): Cart {
+  if (typeof window === 'undefined') return { items: [] };
+  
+  try {
+    const stored = localStorage.getItem(CART_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : { items: [] };
+  } catch {
+    return { items: [] };
+  }
 }
 
-export async function getCart(): Promise<CartItem[]> {
-  const uid = requireUid();
-  const snap = await getDocs(collection(db, "carts", uid, "items"));
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      productId: String(data.productId ?? ""),
-      title: String(data.title ?? ""),
-      imageUrl: (data.imageUrl as string | undefined) ?? null,
-      priceInPaise: Number(data.priceInPaise ?? 0),
-      currency: String(data.currency ?? "INR"),
-      quantity: Number(data.quantity ?? 1),
-    };
-  });
+function saveCart(cart: Cart) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
 }
 
-export async function addToCart(input: { productId: string; quantity: number }): Promise<void> {
-  const uid = requireUid();
-  await setDoc(
-    doc(db, "carts", uid, "items", input.productId),
-    { productId: input.productId, quantity: input.quantity, addedAt: serverTimestamp() },
-    { merge: true }
-  );
+export function getCartItems(): CartItem[] {
+  return getCart().items;
 }
 
-export async function updateCartItemQuantity(itemId: string, quantity: number): Promise<CartItem[]> {
-  const uid = requireUid();
-  await updateDoc(doc(db, "carts", uid, "items", itemId), { quantity });
-  return getCart();
+export function addToCart(item: CartItem) {
+  const cart = getCart();
+  const existing = cart.items.find((i) => i.productId === item.productId);
+  
+  if (existing) {
+    existing.quantity += item.quantity;
+  } else {
+    cart.items.push(item);
+  }
+  
+  saveCart(cart);
 }
 
-export async function removeCartItem(itemId: string): Promise<CartItem[]> {
-  const uid = requireUid();
-  await deleteDoc(doc(db, "carts", uid, "items", itemId));
-  return getCart();
+export function removeFromCart(productId: string) {
+  const cart = getCart();
+  cart.items = cart.items.filter((i) => i.productId !== productId);
+  saveCart(cart);
 }
 
-export const cartService = { getCart, addToCart, updateCartItemQuantity, removeCartItem };
+export function clearCart() {
+  saveCart({ items: [] });
+}
+
+export function getCartTotal(): number {
+  const items = getCartItems();
+  return items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+}
