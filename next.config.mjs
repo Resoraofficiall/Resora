@@ -3,11 +3,18 @@
  * Per Blueprint §18.1: Next.js App Router (locked, Build Prompt Phase 0
  * Step 1 — "Do not use the Pages Router"), Firebase Storage for
  * seller/product images (remote image domain allow-listed below).
+ *
+ * FIX: Ensure dynamic rendering for Vercel deployment.
  */
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // Use dynamic rendering for all routes (critical for Vercel)
+  // Remove static export to support dynamic routes like /product/[slug]
+  // If you need static export, use dynamicParams: false in route params
+  output: undefined, // DO NOT set to 'export' - breaks dynamic routes
 
   images: {
     remotePatterns: [
