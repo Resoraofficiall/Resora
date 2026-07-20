@@ -316,3 +316,23 @@ export async function generatePhotoToVideo({
   await uploadBytes(storageRef, videoBlob, { contentType: "video/webm" });
   return getDownloadURL(storageRef);
 }
+export async function getCanvasEngineSettings() {
+  return getCategoryFrameMap();
+}
+
+export async function upsertFramePreset(categorySlug: string, preset: FramePreset) {
+  const map = await getCategoryFrameMap();
+  map[categorySlug] = preset;
+  await updateCategoryFrameMap(map);
+}
+
+export async function deleteFramePreset(categorySlug: string) {
+  const map = await getCategoryFrameMap();
+  delete map[categorySlug];
+  await updateCategoryFrameMap(map);
+}
+
+export async function updateLuxuryFilterParams(_params: Partial<typeof LUXURY_FILTER_PARAMS>) {
+  // Filter params are currently code-level constants; persisted override
+  // support can be added to settings/canvasEngineFrames when needed.
+}
