@@ -1,9 +1,12 @@
 /**
  * hooks/useAuth.ts
- * Authentication hook - manages auth state and operations
+ * Authentication hook
+ * Imports from: services/authService.ts, types/schema.ts
  */
 
-import { useEffect, useState } from 'react';
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { subscribeToAuthState, signInWithGoogle, signOutUser } from '@/services/authService';
 import type { User } from '@/types/schema';
@@ -23,24 +26,29 @@ export function useAuth() {
     return () => unsubscribe();
   }, []);
 
-  const login = async () => {
+  const login = useCallback(async () => {
     try {
       setError(null);
       await signInWithGoogle();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in failed');
+      const errorMessage = err instanceof Error ? err.message : 'Sign in failed';
+      setError(errorMessage);
+      console.error('Login error:', err);
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       setError(null);
       await signOutUser();
+      setUser(null);
       router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign out failed');
+      const errorMessage = err instanceof Error ? err.message : 'Sign out failed';
+      setError(errorMessage);
+      console.error('Logout error:', err);
     }
-  };
+  }, [router]);
 
   return {
     user,

@@ -1,7 +1,10 @@
 /**
  * hooks/useRouteGuard.ts
- * Route protection hook - enforces role-based access
+ * Route protection hook
+ * Imports from: hooks/useAuth.ts
  */
+
+'use client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,19 +21,21 @@ export function useRouteGuard(options: UseRouteGuardOptions = {}) {
   const { requiredRole, fallbackRoute = '/login' } = options;
 
   useEffect(() => {
-    if (loading) return; // Still loading auth state
+    if (loading) return;
 
     if (!user) {
-      // Not authenticated
       router.push(fallbackRoute);
       return;
     }
 
     if (requiredRole && user.role !== requiredRole) {
-      // Wrong role
       router.push(fallbackRoute);
     }
   }, [user, loading, requiredRole, fallbackRoute, router]);
 
-  return { allowed: !loading && user && (!requiredRole || user.role === requiredRole) };
+  return { 
+    allowed: !loading && user && (!requiredRole || user.role === requiredRole),
+    user,
+    loading,
+  };
 }

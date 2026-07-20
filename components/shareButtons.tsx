@@ -1,19 +1,19 @@
 /**
  * components/shareButtons.tsx
- * Social sharing buttons component
+ * Social sharing component - PROPER CASE (lowercase)
+ * No external dependencies
  */
 
 'use client';
 
 import React from 'react';
-import { Share2 } from 'lucide-react';
 
 export interface ShareButtonsProps {
   url: string;
   title: string;
 }
 
-export default function ShareButtons({ url, title }: ShareButtonsProps) {
+export default function shareButtons({ url, title }: ShareButtonsProps) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = async () => {
@@ -27,13 +27,12 @@ export default function ShareButtons({ url, title }: ShareButtonsProps) {
   };
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-4 flex-wrap">
       <button
         onClick={handleCopy}
-        className="flex items-center gap-2 text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)] transition"
+        className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)] transition"
       >
-        <Share2 size={16} />
-        {copied ? 'Copied!' : 'Share'}
+        {copied ? '✓ Copied!' : '🔗 Share Link'}
       </button>
       <a
         href={`https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}`}
@@ -41,7 +40,7 @@ export default function ShareButtons({ url, title }: ShareButtonsProps) {
         rel="noreferrer"
         className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)] transition"
       >
-        WhatsApp
+        📱 WhatsApp
       </a>
       <a
         href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`}
@@ -49,7 +48,7 @@ export default function ShareButtons({ url, title }: ShareButtonsProps) {
         rel="noreferrer"
         className="text-[var(--text-caption)] text-[var(--color-ivory-100)] hover:text-[var(--color-gold-500)] transition"
       >
-        X
+        𝕏 Share
       </a>
     </div>
   );

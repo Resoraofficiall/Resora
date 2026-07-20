@@ -1,6 +1,7 @@
 /**
  * services/cartService.ts
- * Shopping cart service - localStorage based for v1
+ * Shopping cart - localStorage based
+ * Imports from: types/schema.ts
  */
 
 import type { CartItem } from '@/types/schema';
@@ -17,14 +18,19 @@ function getCart(): Cart {
   try {
     const stored = localStorage.getItem(CART_STORAGE_KEY);
     return stored ? JSON.parse(stored) : { items: [] };
-  } catch {
+  } catch (error) {
+    console.error('Error reading cart:', error);
     return { items: [] };
   }
 }
 
 function saveCart(cart: Cart) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  try {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  } catch (error) {
+    console.error('Error saving cart:', error);
+  }
 }
 
 export function getCartItems(): CartItem[] {
@@ -57,4 +63,8 @@ export function clearCart() {
 export function getCartTotal(): number {
   const items = getCartItems();
   return items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+}
+
+export function getCartItemCount(): number {
+  return getCartItems().reduce((sum, item) => sum + item.quantity, 0);
 }

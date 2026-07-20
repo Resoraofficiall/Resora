@@ -1,43 +1,50 @@
 /**
  * services/authService.ts
- * Authentication service - Google Sign-In only (Blueprint §30.10)
+ * Authentication logic - Google Sign-In only
+ * Imports from: lib/firebaseClient.ts, types/schema.ts
  */
 
-import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, db } from '@/lib/firebaseClient';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import type { User } from '@/types/schema';
 
 const googleProvider = new GoogleAuthProvider();
 
+/**
+ * Sign in with Google
+ * Creates user document if new
+ */
 export async function signInWithGoogle() {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    const user = result.user;
+    const firebaseUser = result.user;
     
-    // Create or update user document
-    const userRef = doc(db, 'users', user.uid);
+    const userRef = doc(db, 'users', firebaseUser.uid);
     const userSnap = await getDoc(userRef);
     
     if (!userSnap.exists()) {
       await setDoc(userRef, {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName || 'User',
-        photoUrl: user.photoURL,
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName || 'User',
+        photoUrl: firebaseUser.photoURL,
         role: 'customer',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
     
-    return user;
+    return firebaseUser;
   } catch (error) {
     console.error('Google sign in error:', error);
     throw error;
   }
 }
 
+/**
+ * Sign out current user
+ */
 export async function signOutUser() {
   try {
     await signOut(auth);
@@ -47,24 +54,36 @@ export async function signOutUser() {
   }
 }
 
-export function subscribeToAuthState(callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, async (firebaseUser) => {
+/**
+ * Subscribe to authentication state changes
+ */
+export function subscribeToAuthState(callback: (user: User | null) => void): () => void {
+  return onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
     if (!firebaseUser) {
       callback(null);
       return;
     }
     
-    const userRef = doc(db, 'users', firebaseUser.uid);
-    const userSnap = await getDoc(userRef);
-    
-    if (userSnap.exists()) {
-      callback(userSnap.data() as User);
-    } else {
+    try {
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const userData = userSnap.data() as User;
+        callback(userData);
+      } else {
+        callback(null);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
       callback(null);
     }
   });
 }
 
-export function getCurrentUser() {
+/**
+ * Get current user from Firebase Auth
+ */
+export function getCurrentAuthUser() {
   return auth.currentUser;
 }
