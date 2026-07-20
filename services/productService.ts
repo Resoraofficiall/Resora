@@ -189,3 +189,12 @@ export async function getProductById(id: string): Promise<Product | null> {
   if (!snap.exists()) return null;
   return toProduct(snap.id, snap.data());
 }
+export const productServiceAll = {
+  getProductBySlug,
+  getCategoryBySlug,
+  listProductsByCategory,
+  getCollectionBySlug,
+  listProductsByIds,
+  getProductById,
+};
+export { productServiceAll as productService };
