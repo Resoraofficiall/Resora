@@ -68,3 +68,11 @@ export async function listWishlistProducts(uid: string): Promise<ProductSummary[
   const productIds = await listWishlistedProductIds(uid);
   return listProductsByIds(productIds);
 }
+export const wishlistServiceAll = {
+  addToWishlist,
+  removeFromWishlist,
+  isProductWishlisted,
+  listWishlistedProductIds,
+  listWishlistProducts,
+};
+export { wishlistServiceAll as wishlistService };
