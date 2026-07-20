@@ -184,3 +184,16 @@ export async function getLoyaltyStatus(uid: string): Promise<LoyaltyStatus> {
     lifetimePoints: Number(data.lifetimePoints ?? 0),
   };
 }
+export const customerServiceAll = {
+  getCustomerProfile,
+  updateCustomerProfile,
+  listAddresses,
+  addAddress,
+  updateAddress,
+  deleteAddress,
+  listSavedStudios,
+  listRecentlyViewed,
+  recordRecentlyViewed,
+  getLoyaltyStatus,
+};
+export { customerServiceAll as customerService };
