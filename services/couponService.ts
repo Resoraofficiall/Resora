@@ -116,3 +116,6 @@ export async function getCouponById(couponId: string): Promise<Coupon | null> {
   if (!snap.exists()) return null;
   return toCoupon(snap.id, snap.data());
 }
+export async function deactivateCoupon(couponId: string): Promise<void> {
+  return setCouponActive(couponId, false);
+}
