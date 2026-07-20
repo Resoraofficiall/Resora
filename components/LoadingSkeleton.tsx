@@ -103,3 +103,6 @@ export function SkeletonRow({ className = "" }: { className?: string }) {
 }
 
 export default SkeletonGrid;
+export function LoadingSkeleton({ count = 4 }: { count?: number }) {
+  return <SkeletonGrid count={count} />;
+}
