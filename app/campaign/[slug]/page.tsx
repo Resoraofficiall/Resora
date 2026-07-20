@@ -5,7 +5,7 @@ import { listProductsByIds } from '@/services/productService';
 import { listStudiosByIds } from '@/services/studioService';
 import { ProductCard } from '@/product/ProductCard';
 import { StudioHero } from '@/studio/StudioHero';
-import { ShareButtons } from '@/components/ShareButtons';
+import ShareButtons from '@/components/shareButtons';
 import { EmptyState } from '@/components/EmptyState';
 
 // ---------------------------------------------------------------------------
@@ -86,7 +86,6 @@ export default async function CampaignLandingPage({ params }: PageProps) {
         <ShareButtons
           title={campaign.title}
           url={`https://resora.in/campaign/${campaign.slug}`}
-          imageUrl={campaign.bannerImageUrl}
         />
       </section>
 
@@ -95,7 +94,7 @@ export default async function CampaignLandingPage({ params }: PageProps) {
           <h2 className="mb-6 text-[length:var(--text-h2)] text-[var(--color-black-900)]">Featured Studios</h2>
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             {studios.map((studio) => (
-              <StudioHero key={studio.id} studio={studio} compact />
+              <StudioHero key={studio.id} studio={studio} />
             ))}
           </div>
         </section>

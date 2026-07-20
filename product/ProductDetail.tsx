@@ -16,7 +16,7 @@ import { WishlistButton } from "./ProductCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import EmptyState from "@/components/EmptyState";
 import ErrorState from "@/components/ErrorState";
-import ShareButtons from "@/components/ShareButtons";
+import ShareButtons from "@/components/shareButtons";
 
 /**
  * RSR-PRD-009 — Product Detail Page content component.
