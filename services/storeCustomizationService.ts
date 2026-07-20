@@ -74,3 +74,16 @@ export async function saveBanners(banners: HeroBanner[]): Promise<void> {
 export async function saveFeaturedBlockOrder(order: string[]): Promise<void> {
   await updateStoreCustomization({ featuredBlockOrder: order });
 }
+export async function getStoreCustomizationOptions() {
+  return getStoreCustomization();
+}
+
+export async function addOption(banner: HeroBanner) {
+  const current = await getStoreCustomization();
+  await saveBanners([...current.banners, banner]);
+}
+
+export async function removeOption(bannerId: string) {
+  const current = await getStoreCustomization();
+  await saveBanners(current.banners.filter((b) => b.id !== bannerId));
+}
