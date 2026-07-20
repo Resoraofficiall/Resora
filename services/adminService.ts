@@ -230,3 +230,17 @@ export async function listAuditLogs(max = 100): Promise<AuditLogEntry[]> {
     };
   });
 }
+export const adminServiceAll = {
+  listSellerApplications,
+  approveSellerApplication,
+  rejectSellerApplication,
+  listAllProducts,
+  moderateProduct,
+  listAllOrders,
+  listReviewsForModeration,
+  moderateReview,
+  assignRole,
+  getUserRole,
+  listAuditLogs,
+};
+export { adminServiceAll as adminService };
